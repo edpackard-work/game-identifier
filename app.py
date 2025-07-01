@@ -15,8 +15,16 @@ app = Flask(__name__)
 app.config.from_file("config.json", load=json.load)
 
 CAPTURED_DIR = 'static/captured'
-TARGET_BOX = (170, 90, 400, 400)
+TARGET_BOX = (120, 40, 400, 400)
+
+# cv2 parameters
+MINIMUM_CONTOUR_AREA = 500
+AREA_PERCENTAGE = 0.45
 REQUIRED_CONSECUTIVE_FRAMES = 2
+KERNEL_WIDTH = 9
+KERNEL_HEIGHT = 9
+LOWER_THRESHOLD = 50
+UPPER_THRESHOLD = 150
 
 detection_counter = 0
 
@@ -43,32 +51,55 @@ def process_frame():
     roi = frame[y:y+h, x:x+w]
 
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    edges = cv2.Canny(gray, LOWER_THRESHOLD, UPPER_THRESHOLD)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (KERNEL_WIDTH, KERNEL_HEIGHT))
     edges = cv2.dilate(edges, kernel, iterations=1)
-
+    
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    rect = None
     if contours:
-        valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > 500]
+        valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > MINIMUM_CONTOUR_AREA]
         if valid_contours:
             largest = max(valid_contours, key=cv2.contourArea)
             area = cv2.contourArea(largest)
-            if area / green_square_area >= 0.33:
+            x_obj, y_obj, w_obj, h_obj = cv2.boundingRect(largest)
+            rect = {"x": int(x_obj + x), "y": int(y_obj + y), "w": int(w_obj), "h": int(h_obj)} if app.config["CV2_DEBUG"] == True else None 
+            if area / green_square_area >= AREA_PERCENTAGE:
                 detection_counter += 1
                 if detection_counter >= REQUIRED_CONSECUTIVE_FRAMES:
-                    x_obj, y_obj, w_obj, h_obj = cv2.boundingRect(largest)
                     cropped = roi[y_obj:y_obj + h_obj, x_obj:x_obj + w_obj]
                     filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                     path = os.path.join(CAPTURED_DIR, filename)
                     cv2.imwrite(path, cropped)
+
+                    if app.config["CV2_DEBUG"] == True:
+                        path2 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}cv2.png")
+                        path3 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}orig.png")
+                        path4 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}setting.txt")
+                        
+                        cv2.imwrite(path2, np.array(img))
+                        cv2.imwrite(path3, edges)
+                        settings_string = f"MINIMUM CONTOUR AREA: {MINIMUM_CONTOUR_AREA}\n"\
+                        + f"AREA_PERCENTAGE: {AREA_PERCENTAGE}\n"\
+                        + f"REQUIRED_CONSECUTIVE_FRAMES: {REQUIRED_CONSECUTIVE_FRAMES}\n"\
+                        + f"KERNEL_WIDTH: {KERNEL_WIDTH};\n"\
+                        + f"KERNEL_HEIGHT: {KERNEL_HEIGHT}\n"\
+                        + f"UPPER_THRESHOLD: {UPPER_THRESHOLD}\n"\
+                        + f"LOWER_THRESHOLD: {LOWER_THRESHOLD}"
+                        with open(path4, 'w') as f:
+                            f.write(settings_string)
+
                     return jsonify(success=True, image_url=f'/static/captured/{filename}')
+
             else:
                 detection_counter = 0
+        else:
+            detection_counter = 0
     else:
         detection_counter = 0
 
-    return jsonify(success=False)
+    return jsonify(success=False, rect=rect, detected_frames=detection_counter)
 
 @app.route('/process_uploaded_image', methods=['POST'])
 def process_uploaded_image():
@@ -93,8 +124,8 @@ def process_uploaded_image():
         labelCode: str | None=None
 
     response = client.responses.parse(
-        model="gpt-4.1",
-        # model="gpt-4o-mini",
+        # model="gpt-4.1",
+        model="gpt-4o-mini",
         temperature=0,
         input=[
             {"role": "system", "content": "You are an expert video game identifier. Use the game cartridge label text to identify the game's title and system, label code and publisher. Use your knowledge of the game for the release year. Return '' if you are not sure about any field."},

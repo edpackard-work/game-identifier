@@ -1,7 +1,12 @@
-video, canvas, img {
+canvas, img {
     display: block;
     margin: 1rem auto;
 }
+
+video {
+    display: none;
+}
+
 #targetBox {
     position: absolute;
     border: 3px solid green;
