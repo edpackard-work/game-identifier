@@ -4,38 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Video Game Label Identifier</title>
-  <style>
-    video, canvas, img {
-      display: block;
-      margin: 1rem auto;
-    }
-    #targetBox {
-      position: absolute;
-      border: 3px solid green;
-      width: 400px;
-      height: 400px;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-    }
-    #container {
-      position: relative;
-      width: 640px;
-      margin: auto;
-    }
-    #loading {
-      text-align: center;
-      display: none;
-    }
-    #tryAgainBtn {
-      display: none;
-      margin: 1rem auto;
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      display: block;
-    }
-  </style>
+  <link rel="stylesheet" href="static/css/styles.css" />
 </head>
 <body>
   <h1 style="text-align: center">Video Game Label Identifier</h1>
@@ -44,7 +13,7 @@
     <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
     <div id="targetBox"></div>
     <img id="capturedImage" style="display: none;" />
-    <audio src="/static//sounds/shutter.wav" id="soundEffect"></audio>
+    <audio src="/static/sounds/shutter.wav" id="soundEffect"></audio>
   </div>
   <div id="loading">Loading game info...</div>
   <div id="gameInfo" style="text-align: center; display: none;">
@@ -52,90 +21,6 @@
     <pre id="gameJson"></pre>
     <button id="tryAgainBtn" onclick="resetApp()">Try Again</button>
   </div>
-<script>
-  const video = document.getElementById('webcam');
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const capturedImage = document.getElementById('capturedImage');
-  const loading = document.getElementById('loading');
-  const tryAgainBtn = document.getElementById('tryAgainBtn');
-  const gameInfoDiv = document.getElementById('gameInfo');
-  const gameJsonEl = document.getElementById('gameJson');
-
-  let stream = null;
-  let pollingInterval = null;
-
-  async function initWebcam() {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      pollingInterval = setInterval(captureAndSendFrame, 200);
-    } catch (err) {
-      alert('Could not access webcam.');
-    }
-  }
-
-  async function captureAndSendFrame() {
-    if (!stream || video.videoWidth === 0) return;
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg');
-
-    const response = await fetch('/process_frame', {
-      method: 'POST',
-      body: JSON.stringify({ image: dataUrl }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    const result = await response.json();
-    if (result.success) {
-      stopWebcam();
-      const soundEffect = document.getElementById('soundEffect');
-      soundEffect.play()
-
-      video.style.display = 'none';
-      document.getElementById('targetBox').style.display = 'none';
-      capturedImage.src = result.image_url;
-      capturedImage.style.display = 'block';
-      loading.style.display = 'block';
-
-      const filename = result.image_url.split('/').pop();
-      const gameInfoRes = await fetch('/process_uploaded_image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename })
-      });
-
-      const gameInfo = await gameInfoRes.json();
-      loading.style.display = 'none';
-
-      if (gameInfo.success) {
-        gameJsonEl.textContent = `Title: ${gameInfo.title}\nSystem: ${gameInfo.system}\nPublisher: ${gameInfo.publisher}\nRelease Year: ${gameInfo.releaseYear}\nLabel Code: ${gameInfo.labelCode}`;
-        gameInfoDiv.style.display = 'block';
-        tryAgainBtn.style.display = 'block';
-      }
-    }
-  }
-
-  function stopWebcam() {
-    if (pollingInterval) clearInterval(pollingInterval);
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      stream = null;
-    }
-  }
-
-  function resetApp() {
-    video.style.display = 'block';
-    document.getElementById('targetBox').style.display = 'block';
-    capturedImage.style.display = 'none';
-    gameInfoDiv.style.display = 'none';
-    gameJsonEl.textContent = '';
-    loading.style.display = 'none';
-    initWebcam();
-  }
-
-  initWebcam();
-</script>
+  <script src="static/javascripts/script.js"></script>
 </body>
 </html>
