@@ -85,7 +85,18 @@ async function captureAndSendFrame() {
     loading.style.display = "none";
 
     if (gameInfo.success) {
-      gameJsonEl.textContent = `Title: ${gameInfo.title}\nSystem: ${gameInfo.system}\nPublisher: ${gameInfo.publisher}\nRelease Year: ${gameInfo.releaseYear}\nLabel Code: ${gameInfo.labelCode}`;
+      const {
+        isItAVideoGame,
+        title,
+        system,
+        publisher,
+        releaseYear,
+        region,
+        labelCode,
+      } = gameInfo;
+      gameJsonEl.textContent = isItAVideoGame
+        ? `Title: ${title}\nSystem: ${system}\nPublisher: ${publisher}\nRelease Year: ${releaseYear}\nRegion: ${region}\nLabel Code: ${labelCode}`
+        : "Sorry, this is not a video game!";
       gameInfoDiv.style.display = "block";
       tryAgainBtn.style.display = "block";
     }

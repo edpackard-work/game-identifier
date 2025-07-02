@@ -69,14 +69,15 @@ def process_frame():
                 detection_counter += 1
                 if detection_counter >= REQUIRED_CONSECUTIVE_FRAMES:
                     cropped = roi[y_obj:y_obj + h_obj, x_obj:x_obj + w_obj]
+                    
                     filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                     path = os.path.join(CAPTURED_DIR, filename)
                     cv2.imwrite(path, cropped)
 
                     if app.config["CV2_DEBUG"] == True:
-                        path2 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}cv2.png")
-                        path3 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}orig.png")
-                        path4 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}setting.txt")
+                        path2 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}-captured_image.png")
+                        path3 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}-cv2_edges.png")
+                        path4 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}-settings.txt")
                         
                         cv2.imwrite(path2, np.array(img))
                         cv2.imwrite(path3, edges)
@@ -91,7 +92,6 @@ def process_frame():
                             f.write(settings_string)
 
                     return jsonify(success=True, image_url=f'/static/captured/{filename}')
-
             else:
                 detection_counter = 0
         else:
@@ -117,18 +117,32 @@ def process_uploaded_image():
         encoded_image = base64.b64encode(img_file.read()).decode()
 
     class GameDetails(BaseModel):
+        reasoning: str
+        isItAVideoGame: bool
         title: str | None=None
         system: str | None=None
         publisher: str | None=None
         releaseYear: int | None=None
         labelCode: str | None=None
+        region: str | None=None
 
     response = client.responses.parse(
         # model="gpt-4.1",
-        model="gpt-4o-mini",
+        # model="gpt-4o"
+        model="gpt-4o",
         temperature=0,
         input=[
-            {"role": "system", "content": "You are an expert video game identifier. Use the game cartridge label text to identify the game's title and system, label code and publisher. Use your knowledge of the game for the release year. Return '' if you are not sure about any field."},
+            {"role": "system", "content": "You are an expert video game identifier. \
+             Consider the game cartridge type and label text, \
+             alongside your knowledge to identify the game in the image provided. \
+             isItAVideoGame: if this is false, return '' for title, system, publisher, releaseYear and labelCode. \
+             title: the game's title. \
+             system: do not include manufacturer (i.e. return Game Boy not Nintendo Game Boy, or return Mega Drive not Sega Mega Drive) \
+             publisher: the game's publisher on this particular system, usually but not always displayed on the label text \
+             releaseYear: the game's release year on this particular system and region \
+             labelCode: the game's label code (if present) in the acknowledged system format (i.e. a DMG code for Game Boy) \
+             region: based on cartridge type, artwork and label, return the region (i.e. Europe, United Kingdom, Japan, United States etc) \
+             Return '' if you are not sure about any field."},
             {"role": "user",
                 "content": [
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{encoded_image}"}
@@ -142,6 +156,8 @@ def process_uploaded_image():
     reply = response.output_parsed
     
     responseJson = {**success, **reply.model_dump(mode='json')}
+    if app.config["CV2_DEBUG"] == True:
+        print(responseJson)
     return responseJson
 
 if __name__ == '__main__':
