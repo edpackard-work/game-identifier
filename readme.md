@@ -14,4 +14,4 @@ python3 app.py
 
 Open browser `http://localhost:5000` and give permission to use webcam if asked. Hold a game cartridge up in the green square until captured - rectangular grey cartridges (Game Boy, NES, SNES for example) work best.
 
-CV2_DEBUG, when set to true, displays a blue bounding box on the frontend to show what object is being tracked, and also saves more information on the backend in the `captured` directory.
+CV2_DEBUG, when set to true, displays a blue bounding box on the frontend to show what object is being tracked, and also saves images and setting information on the backend in the `debug` directory.
