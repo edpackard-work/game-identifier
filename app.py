@@ -18,13 +18,13 @@ DEBUG_DIR = 'static/debug'
 
 # cv2 parameters
 TARGET_BOX = (120, 40, 400, 400)
-MINIMUM_CONTOUR_AREA = 500
+MINIMUM_CONTOUR_AREA = 575
 AREA_PERCENTAGE = 0.45
 REQUIRED_CONSECUTIVE_FRAMES = 2
-KERNEL_WIDTH = 9
-KERNEL_HEIGHT = 9
-LOWER_THRESHOLD = 50
-UPPER_THRESHOLD = 150
+KERNEL_WIDTH = 5
+KERNEL_HEIGHT = 5
+UPPER_THRESHOLD = 125
+LOWER_THRESHOLD = 40
 
 detection_counter = 0
 
@@ -47,7 +47,7 @@ def process_frame():
     frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
     x, y, w, h = TARGET_BOX
-    green_square_area = w * h
+    target_box_area = w * h
     roi = frame[y:y+h, x:x+w]
 
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
@@ -62,10 +62,10 @@ def process_frame():
         valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > MINIMUM_CONTOUR_AREA]
         if valid_contours:
             largest = max(valid_contours, key=cv2.contourArea)
-            area = cv2.contourArea(largest)
+            largest_area = cv2.contourArea(largest)
             x_obj, y_obj, w_obj, h_obj = cv2.boundingRect(largest)
             rect = {"x": int(x_obj + x), "y": int(y_obj + y), "w": int(w_obj), "h": int(h_obj)} if app.config["CV2_DEBUG"] == True else None 
-            if area / green_square_area >= AREA_PERCENTAGE:
+            if largest_area / target_box_area >= AREA_PERCENTAGE:
                 detection_counter += 1
                 if detection_counter >= REQUIRED_CONSECUTIVE_FRAMES:
                     cropped = roi[y_obj:y_obj + h_obj, x_obj:x_obj + w_obj]
