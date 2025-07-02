@@ -18,7 +18,6 @@ async function initWebcam() {
     stream = await navigator.mediaDevices.getUserMedia({ video: true });
     video.srcObject = stream;
 
-    // Match canvas size to video size when metadata is loaded
     video.onloadedmetadata = () => {
       targetBox.style.display = "block";
       canvas.style.display = "block";
@@ -33,7 +32,6 @@ async function initWebcam() {
   }
 }
 
-// Continuously draw video to canvas for live preview
 function drawVideoToCanvas() {
   if (stream && video.videoWidth > 0 && video.videoHeight > 0) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -70,15 +68,14 @@ async function captureAndSendFrame() {
 
     canvas.style.display = "none";
     document.getElementById("targetBox").style.display = "none";
-    capturedImage.src = result.image_url;
+    capturedImage.src = `data:image/jpeg;base64,${result.image}`;
     capturedImage.style.display = "block";
     loading.style.display = "block";
 
-    const filename = result.image_url.split("/").pop();
     const gameInfoRes = await fetch("/process_uploaded_image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename }),
+      body: JSON.stringify({ image: result.image }),
     });
 
     const gameInfo = await gameInfoRes.json();

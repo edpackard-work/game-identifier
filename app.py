@@ -14,10 +14,10 @@ from pydantic import BaseModel
 app = Flask(__name__)
 app.config.from_file("config.json", load=json.load)
 
-CAPTURED_DIR = 'static/captured'
-TARGET_BOX = (120, 40, 400, 400)
+DEBUG_DIR = 'static/debug'
 
 # cv2 parameters
+TARGET_BOX = (120, 40, 400, 400)
 MINIMUM_CONTOUR_AREA = 500
 AREA_PERCENTAGE = 0.45
 REQUIRED_CONSECUTIVE_FRAMES = 2
@@ -69,18 +69,21 @@ def process_frame():
                 detection_counter += 1
                 if detection_counter >= REQUIRED_CONSECUTIVE_FRAMES:
                     cropped = roi[y_obj:y_obj + h_obj, x_obj:x_obj + w_obj]
-                    
-                    filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                    path = os.path.join(CAPTURED_DIR, filename)
-                    cv2.imwrite(path, cropped)
 
+                    # convert numpy array to base64 image
+                    _, buffer = cv2.imencode('.png', cropped)
+                    base_64_image = base64.b64encode(buffer).decode()
+            
                     if app.config["CV2_DEBUG"] == True:
-                        path2 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}-captured_image.png")
-                        path3 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}-cv2_edges.png")
-                        path4 = os.path.join(CAPTURED_DIR, f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}-settings.txt")
-                        
+                        filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        path1 = os.path.join(DEBUG_DIR, f"{filename}.png")
+                        path2 = os.path.join(DEBUG_DIR, f"{filename}-captured_image.png")
+                        path3 = os.path.join(DEBUG_DIR, f"{filename}-cv2_edges.png")
+                        path4 = os.path.join(DEBUG_DIR, f"{filename}-settings.txt")
+                        cv2.imwrite(path1, cropped)
                         cv2.imwrite(path2, np.array(img))
                         cv2.imwrite(path3, edges)
+                        
                         settings_string = f"MINIMUM CONTOUR AREA: {MINIMUM_CONTOUR_AREA}\n"\
                         + f"AREA_PERCENTAGE: {AREA_PERCENTAGE}\n"\
                         + f"REQUIRED_CONSECUTIVE_FRAMES: {REQUIRED_CONSECUTIVE_FRAMES}\n"\
@@ -91,7 +94,7 @@ def process_frame():
                         with open(path4, 'w') as f:
                             f.write(settings_string)
 
-                    return jsonify(success=True, image_url=f'/static/captured/{filename}')
+                    return jsonify(success=True, image=base_64_image)
             else:
                 detection_counter = 0
         else:
@@ -104,18 +107,10 @@ def process_frame():
 @app.route('/process_uploaded_image', methods=['POST'])
 def process_uploaded_image():
     data = request.get_json()
-    filename = data.get('filename')
+    image = data.get('image')
 
-    if not filename:
-        return jsonify({'success': False, 'error': 'Missing filename'}), 400
-
-    local_path = os.path.join(CAPTURED_DIR, filename)
-    if not os.path.exists(local_path):
-        return jsonify({'success': False, 'error': 'File not found'}), 404
-
-    with open(local_path, 'rb') as img_file:
-        encoded_image = base64.b64encode(img_file.read()).decode()
-
+    if not image:
+        return jsonify({'success': False, 'error': 'Missing image'}), 400
     class GameDetails(BaseModel):
         reasoning: str
         isItAVideoGame: bool
@@ -128,8 +123,7 @@ def process_uploaded_image():
 
     response = client.responses.parse(
         # model="gpt-4.1",
-        # model="gpt-4o"
-        model="gpt-4o",
+        model="gpt-4o-mini",
         temperature=0,
         input=[
             {"role": "system", "content": "You are an expert video game identifier. \
@@ -145,7 +139,7 @@ def process_uploaded_image():
              Return '' if you are not sure about any field."},
             {"role": "user",
                 "content": [
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{encoded_image}"}
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{image}"}
                 ]
             }
         ],
@@ -161,6 +155,6 @@ def process_uploaded_image():
     return responseJson
 
 if __name__ == '__main__':
-    if not os.path.exists(CAPTURED_DIR):
-        os.makedirs(CAPTURED_DIR)
+    if not os.path.exists(DEBUG_DIR):
+        os.makedirs(DEBUG_DIR)
     app.run(debug=True)
