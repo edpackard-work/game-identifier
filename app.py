@@ -104,13 +104,14 @@ def process_frame():
 
     return jsonify(success=False, rect=rect, detected_frames=detection_counter)
 
-@app.route('/process_uploaded_image', methods=['POST'])
-def process_uploaded_image():
+@app.route('/generate_game_info', methods=['POST'])
+def generate_game_info():
     data = request.get_json()
     image = data.get('image')
 
     if not image:
         return jsonify({'success': False, 'error': 'Missing image'}), 400
+    
     class GameDetails(BaseModel):
         reasoning: str
         isItAVideoGame: bool

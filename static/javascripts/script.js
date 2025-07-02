@@ -72,7 +72,7 @@ async function captureAndSendFrame() {
     capturedImage.style.display = "block";
     loading.style.display = "block";
 
-    const gameInfoRes = await fetch("/process_uploaded_image", {
+    const gameInfoRes = await fetch("/generate_game_info", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image: result.image }),

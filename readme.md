@@ -10,7 +10,7 @@ Add `config.json` to root of project with
 ```
 
 `pip install` requirements and then 
-python3 app.py
+`python3 app.py`
 
 Open browser `http://localhost:5000` and give permission to use webcam if asked. Hold a game cartridge up in the green square until captured - rectangular grey cartridges (Game Boy, NES, SNES for example) work best.
 
