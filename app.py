@@ -78,11 +78,12 @@ def process_frame():
                         filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                         path1 = os.path.join(DEBUG_DIR, f"{filename}.png")
                         path2 = os.path.join(DEBUG_DIR, f"{filename}-captured_image.png")
-                        path3 = os.path.join(DEBUG_DIR, f"{filename}-cv2_edges.png")
+                        path3 = os.path.join(DEBUG_DIR, f"{filename}-cv2_contours.png")
                         path4 = os.path.join(DEBUG_DIR, f"{filename}-settings.txt")
                         cv2.imwrite(path1, cropped)
                         cv2.imwrite(path2, np.array(img))
-                        cv2.imwrite(path3, edges)
+                        contours_img = cv2.drawContours(roi, contours, -1, (255,255,255), 3)
+                        cv2.imwrite(path3, contours_img)
                         
                         settings_string = f"MINIMUM CONTOUR AREA: {MINIMUM_CONTOUR_AREA}\n"\
                         + f"AREA_PERCENTAGE: {AREA_PERCENTAGE}\n"\
@@ -117,14 +118,15 @@ def generate_game_info():
         isItAVideoGame: bool
         title: str | None=None
         system: str | None=None
+        genre: str | None=None
         publisher: str | None=None
         releaseYear: int | None=None
         labelCode: str | None=None
         region: str | None=None
 
     response = client.responses.parse(
-        # model="gpt-4.1",
-        model="gpt-4o-mini",
+        model="gpt-4.1",
+        # model="gpt-4o-mini",
         temperature=0,
         input=[
             {"role": "system", "content": "You are an expert video game identifier. \
@@ -133,6 +135,7 @@ def generate_game_info():
              isItAVideoGame: if this is false, return '' for title, system, publisher, releaseYear and labelCode. \
              title: the game's title. \
              system: do not include manufacturer (i.e. return Game Boy not Nintendo Game Boy, or return Mega Drive not Sega Mega Drive) \
+             genre: a one or two word summary of the game's primary genre (i.e. Puzzle, Platformer, Action-Adventure, RPG etc) \
              publisher: the game's publisher on this particular system, usually but not always displayed on the label text \
              releaseYear: the game's release year on this particular system and region \
              labelCode: the game's label code (if present) in the acknowledged system format (i.e. a DMG code for Game Boy) \

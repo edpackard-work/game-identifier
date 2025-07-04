@@ -38,7 +38,7 @@ function drawVideoToCanvas() {
     if (boundedRect) {
       const { x, y, h, w } = boundedRect;
       ctx.beginPath();
-      ctx.rect(x, y, h, w);
+      ctx.rect(x, y, w, h);
       ctx.strokeStyle = objectedDetected ? "white" : "blue";
       ctx.stroke();
     }
@@ -86,13 +86,14 @@ async function captureAndSendFrame() {
         isItAVideoGame,
         title,
         system,
+        genre,
         publisher,
         releaseYear,
         region,
         labelCode,
       } = gameInfo;
       gameJsonEl.textContent = isItAVideoGame
-        ? `Title: ${title}\nSystem: ${system}\nPublisher: ${publisher}\nRelease Year: ${releaseYear}\nRegion: ${region}\nLabel Code: ${labelCode}`
+        ? `Title: ${title}\nSystem: ${system}\nGenre: ${genre}\nPublisher: ${publisher}\nRelease Year: ${releaseYear}\nRegion: ${region}\nLabel Code: ${labelCode}`
         : "Sorry, this is not a video game!";
       gameInfoDiv.style.display = "block";
       tryAgainBtn.style.display = "block";
