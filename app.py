@@ -3,6 +3,9 @@ import numpy as np
 import base64
 import os
 import json
+import signal
+import sys
+from collections import deque
 
 from flask import Flask, render_template, request, jsonify
 from datetime import datetime
@@ -11,22 +14,43 @@ from io import BytesIO
 from openai import OpenAI
 from pydantic import BaseModel
 
+MINIMUM_BOX_AREA = 75000
+VALID_BOUNDING_BOXES_REQUIRED = 8
+STABILITY_PIXEL_MOVEMENT_ALLOWED = 100
+SHARPNESS_THRESHOLD = 150 # threshold for Laplacian variance
+
 app = Flask(__name__)
 app.config.from_file("config.json", load=json.load)
 
-DEBUG_DIR = 'static/debug'
+yolo_cfg = 'model/yolov4-tiny-custom.cfg'
+yolo_weights = 'model/yolov4-tiny-custom_last.weights'
+yolo_names = 'model/obj.names'
 
-# cv2 parameters
-TARGET_BOX = (120, 40, 400, 400)
-MINIMUM_CONTOUR_AREA = 575
-AREA_PERCENTAGE = 0.45
-REQUIRED_CONSECUTIVE_FRAMES = 2
-KERNEL_WIDTH = 5
-KERNEL_HEIGHT = 5
-UPPER_THRESHOLD = 125
-LOWER_THRESHOLD = 40
+# For development/demo use only: global queue to track VALID_BOUNDING_BOXES_REQUIRED number of bounding boxes
+# In production/multiclient, use per-session or per-client storage
+boxes_queue = deque(maxlen=VALID_BOUNDING_BOXES_REQUIRED)
 
-detection_counter = 0
+# Load class labels
+with open(yolo_names, 'r') as f:
+    LABELS = [line.strip() for line in f.readlines()]
+
+# Load YOLOv4-tiny model
+net = cv2.dnn.readNetFromDarknet(yolo_cfg, yolo_weights)
+net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+
+layer_names = net.getLayerNames()
+unconnected = net.getUnconnectedOutLayers()
+if not isinstance(unconnected, np.ndarray):
+    unconnected = np.array(unconnected)
+output_layers = [layer_names[int(i) - 1] for i in unconnected.flatten()]
+
+def cleanup(*args):
+    print('\nCleaning up resources...')
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, cleanup)
+signal.signal(signal.SIGTERM, cleanup)
 
 client = OpenAI(
     api_key=app.config["OPENAI_API_KEY"]   
@@ -38,72 +62,89 @@ def index():
 
 @app.route('/process_frame', methods=['POST'])
 def process_frame():
-    global detection_counter
-
+    global boxes_queue
     data = request.get_json()
     img_data = data['image'].split(',')[1]
     img_bytes = base64.b64decode(img_data)
     img = Image.open(BytesIO(img_bytes))
     frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-    x, y, w, h = TARGET_BOX
-    target_box_area = w * h
-    roi = frame[y:y+h, x:x+w]
+    (frame_h, frame_w) = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 1/255.0, (416, 416), swapRB=True, crop=False)
+    net.setInput(blob)
+    layer_outputs = net.forward(output_layers)
 
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, LOWER_THRESHOLD, UPPER_THRESHOLD)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (KERNEL_WIDTH, KERNEL_HEIGHT))
-    edges = cv2.dilate(edges, kernel, iterations=1)
-    
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    boxes = []
+    confidences = []
+    classIDs = []
 
-    rect = None
-    if contours:
-        valid_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > MINIMUM_CONTOUR_AREA]
-        if valid_contours:
-            largest = max(valid_contours, key=cv2.contourArea)
-            largest_area = cv2.contourArea(largest)
-            x_obj, y_obj, w_obj, h_obj = cv2.boundingRect(largest)
-            rect = {"x": int(x_obj + x), "y": int(y_obj + y), "w": int(w_obj), "h": int(h_obj)} if app.config["CV2_DEBUG"] == True else None 
-            if largest_area / target_box_area >= AREA_PERCENTAGE:
-                detection_counter += 1
-                if detection_counter >= REQUIRED_CONSECUTIVE_FRAMES:
-                    cropped = roi[y_obj:y_obj + h_obj, x_obj:x_obj + w_obj]
+    for output in layer_outputs:
+        for detection in output:
+            scores = detection[5:]
+            classID = np.argmax(scores)
+            confidence = scores[classID]
+            if confidence > 0.75:  # threshold
+                box = detection[0:4] * np.array([frame_w, frame_h, frame_w, frame_h])
+                (centerX, centerY, width, height) = box.astype('int')
+                x = int(centerX - (width / 2))
+                y = int(centerY - (height / 2))
+                boxes.append([x, y, int(width), int(height)])
+                confidences.append(float(confidence))
+                classIDs.append(classID)
 
-                    # convert numpy array to base64 image
-                    _, buffer = cv2.imencode('.png', cropped)
-                    base_64_image = base64.b64encode(buffer).decode()
-            
-                    if app.config["CV2_DEBUG"] == True:
-                        filename = f"capture_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                        path1 = os.path.join(DEBUG_DIR, f"{filename}.png")
-                        path2 = os.path.join(DEBUG_DIR, f"{filename}-captured_image.png")
-                        path3 = os.path.join(DEBUG_DIR, f"{filename}-cv2_contours.png")
-                        path4 = os.path.join(DEBUG_DIR, f"{filename}-settings.txt")
-                        cv2.imwrite(path1, cropped)
-                        cv2.imwrite(path2, np.array(img))
-                        contours_img = cv2.drawContours(roi, contours, -1, (255,255,255), 3)
-                        cv2.imwrite(path3, contours_img)
-                        
-                        settings_string = f"MINIMUM CONTOUR AREA: {MINIMUM_CONTOUR_AREA}\n"\
-                        + f"AREA_PERCENTAGE: {AREA_PERCENTAGE}\n"\
-                        + f"REQUIRED_CONSECUTIVE_FRAMES: {REQUIRED_CONSECUTIVE_FRAMES}\n"\
-                        + f"KERNEL_WIDTH: {KERNEL_WIDTH};\n"\
-                        + f"KERNEL_HEIGHT: {KERNEL_HEIGHT}\n"\
-                        + f"UPPER_THRESHOLD: {UPPER_THRESHOLD}\n"\
-                        + f"LOWER_THRESHOLD: {LOWER_THRESHOLD}"
-                        with open(path4, 'w') as f:
-                            f.write(settings_string)
+    idxs = cv2.dnn.NMSBoxes(boxes, confidences, 0.3, 0.4)
+    idxs = np.asarray(idxs)
+    if len(idxs) > 0:
+        idxs_flat = idxs.flatten()
+        best_idx = idxs_flat[np.argmax([confidences[i] for i in idxs_flat])]
+        x, y, w, h = boxes[best_idx]
+        classID = classIDs[best_idx]
+        label = LABELS[classID]
+        confidence = confidences[best_idx]
+        # Crop detected object for return
+        x1, y1, x2, y2 = max(0, x), max(0, y), min(frame_w, x+w), min(frame_h, y+h)
+        cropped = frame[y1:y2, x1:x2]
+        _, buffer = cv2.imencode('.png', cropped)
+        base_64_image = base64.b64encode(buffer).decode()
+        rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "label": label, "confidence": float(confidence)}
 
-                    return jsonify(success=True, image=base_64_image)
-            else:
-                detection_counter = 0
+        # --- Detection confirmation logic ---
+        area = w * h
+        stable = False
+        is_sharp = False
+        
+        if area >= MINIMUM_BOX_AREA:
+            boxes_queue.append((x, y, w, h))
+
+            if len(boxes_queue) == VALID_BOUNDING_BOXES_REQUIRED:
+                xs = [b[0] for b in boxes_queue]
+                ys = [b[1] for b in boxes_queue]
+                # Check if movement is within 100 pixels for all pairs
+                stable = all(
+                    abs(xs[i] - xs[i - 1]) <= STABILITY_PIXEL_MOVEMENT_ALLOWED
+                    and abs(ys[i] - ys[i - 1]) <= STABILITY_PIXEL_MOVEMENT_ALLOWED
+                     for i in range(1, VALID_BOUNDING_BOXES_REQUIRED)
+                )
+                if not stable:
+                    boxes_queue.popleft()
+                    # todo: split queue at latest point not stable
+
+            gray_crop = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+            laplacian_var = cv2.Laplacian(gray_crop, cv2.CV_64F).var()
+            is_sharp = laplacian_var > SHARPNESS_THRESHOLD
         else:
-            detection_counter = 0
+            boxes_queue.clear()
+            
+        if area >= MINIMUM_BOX_AREA and stable and is_sharp:
+            boxes_queue.clear()
+            return jsonify(success=True, image=base_64_image, rect=rect)
+        else:
+            boxes_queue_len = int(len(boxes_queue))
+            return jsonify(success=False, image=base_64_image, rect=rect, boxes_queue_len=boxes_queue_len, is_sharp=bool(is_sharp))
+        # --- End detection confirmation logic ---
     else:
-        detection_counter = 0
-
-    return jsonify(success=False, rect=rect, detected_frames=detection_counter)
+        boxes_queue.clear()
+        return jsonify(success=False, rect=None)
 
 @app.route('/generate_game_info', methods=['POST'])
 def generate_game_info():
@@ -125,8 +166,8 @@ def generate_game_info():
         region: str | None=None
 
     response = client.responses.parse(
-        model="gpt-4.1",
-        # model="gpt-4o-mini",
+        # model="gpt-4.1",
+        model="gpt-4o-mini",
         temperature=0,
         input=[
             {"role": "system", "content": "You are an expert video game identifier. \
@@ -159,6 +200,4 @@ def generate_game_info():
     return responseJson
 
 if __name__ == '__main__':
-    if not os.path.exists(DEBUG_DIR):
-        os.makedirs(DEBUG_DIR)
-    app.run(debug=True)
+    app.run(debug=True, host='127.0.0.1', port=5001)

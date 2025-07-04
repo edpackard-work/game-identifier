@@ -11,16 +11,6 @@ video {
     display: none;
 }
 
-#targetBox {
-    position: absolute;
-    border: 3px solid green;
-    width: 400px;
-    height: 400px;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-}
 #container {
     position: relative;
     width: 640px;
@@ -35,5 +25,5 @@ video {
     margin: 1rem auto;
     padding: 0.5rem 1rem;
     font-size: 1rem;
-    display: block;
+    text-align: center;
 }
