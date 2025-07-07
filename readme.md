@@ -1,8 +1,10 @@
-Prototype video game cartridge label identifier using webcam. Uses flask, cv2 library and open AI API.
+Prototype video game cartridge label identifier using webcam. Uses flask, a lightweight yolo model, cv2 library and open AI API.
 
 The idea is that you can hold a cartridge in front of your webcam, the yolo model will identify the cartridge, an image of the cartridge is then sent to an Open AI model which returns information about the cartridge. It is good on most things, although it struggles with label code and region especially with low-res webcam images.
 
 The underlying yolo model was trained on 300+ images of Game Boy, Game Boy Color, Game Boy Advance, Game Gear, Master Sytem, Mega Drive (including EA, Codemasters and Japanese variants), NES, SNES (not US SNES) and N64 cartridges. It will likely pick up other cartridges, but obviously won't label them correctly (albeit, depending on LLM used, the AI might correctly identity the cartridge after the photo is taken and sent).
+
+This is a really good tutorial for training yolo models: https://github.com/moises-dias/yolo-opencv-detector
 
 Add `config.json` to root of project with
 
