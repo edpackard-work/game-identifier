@@ -8,34 +8,42 @@ import sys
 from collections import deque
 
 from flask import Flask, render_template, request, jsonify
-from datetime import datetime
 from PIL import Image
 from io import BytesIO
 from openai import OpenAI
 from pydantic import BaseModel
 
-MINIMUM_BOX_AREA = 75000
-VALID_BOUNDING_BOXES_REQUIRED = 8
-STABILITY_PIXEL_MOVEMENT_ALLOWED = 100
-SHARPNESS_THRESHOLD = 150 # threshold for Laplacian variance
+YOLO_CONFIG = {
+    'cfg_path': 'model/yolov4-tiny-custom.cfg',
+    'weights_path': 'model/yolov4-tiny-custom_last.weights',
+    'names_path': 'model/obj.names',
+    'confidence_threshold': 0.3,
+    'nms_threshold': 0.3,
+    'nms_overlap': 0.4,
+    'input_size': (416, 416)
+}
+
+DETECTION_CONFIG = {
+    'min_area': 75000,
+    'stability_frames': 8,
+    'max_movement': 100,
+    'sharpness_threshold': 150
+}
 
 app = Flask(__name__)
 app.config.from_file("config.json", load=json.load)
+app.config['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', app.config.get('OPENAI_API_KEY'))
 
-yolo_cfg = 'model/yolov4-tiny-custom.cfg'
-yolo_weights = 'model/yolov4-tiny-custom_last.weights'
-yolo_names = 'model/obj.names'
-
-# For development/demo use only: global queue to track VALID_BOUNDING_BOXES_REQUIRED number of bounding boxes
+# For development/demo use only: global queue to track last N bounding boxes
 # In production/multiclient, use per-session or per-client storage
-boxes_queue = deque(maxlen=VALID_BOUNDING_BOXES_REQUIRED)
+boxes_queue = deque(maxlen=DETECTION_CONFIG['stability_frames'])
 
 # Load class labels
-with open(yolo_names, 'r') as f:
+with open(YOLO_CONFIG['names_path'], 'r') as f:
     LABELS = [line.strip() for line in f.readlines()]
 
 # Load YOLOv4-tiny model
-net = cv2.dnn.readNetFromDarknet(yolo_cfg, yolo_weights)
+net = cv2.dnn.readNetFromDarknet(YOLO_CONFIG['cfg_path'], YOLO_CONFIG['weights_path'])
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
@@ -56,95 +64,87 @@ client = OpenAI(
     api_key=app.config["OPENAI_API_KEY"]   
 )
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/process_frame', methods=['POST'])
-def process_frame():
-    global boxes_queue
-    data = request.get_json()
-    img_data = data['image'].split(',')[1]
-    img_bytes = base64.b64decode(img_data)
-    img = Image.open(BytesIO(img_bytes))
-    frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-
-    (frame_h, frame_w) = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(frame, 1/255.0, (416, 416), swapRB=True, crop=False)
+def yolo_detect(frame, net, output_layers, labels, config):
+    (H, W) = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 1/255.0, config['input_size'], swapRB=True, crop=False)
     net.setInput(blob)
     layer_outputs = net.forward(output_layers)
-
     boxes = []
     confidences = []
     classIDs = []
-
     for output in layer_outputs:
         for detection in output:
             scores = detection[5:]
             classID = np.argmax(scores)
             confidence = scores[classID]
-            if confidence > 0.75:  # threshold
-                box = detection[0:4] * np.array([frame_w, frame_h, frame_w, frame_h])
+            if confidence > config['confidence_threshold']:
+                box = detection[0:4] * np.array([W, H, W, H])
                 (centerX, centerY, width, height) = box.astype('int')
                 x = int(centerX - (width / 2))
                 y = int(centerY - (height / 2))
                 boxes.append([x, y, int(width), int(height)])
                 confidences.append(float(confidence))
                 classIDs.append(classID)
-
-    idxs = cv2.dnn.NMSBoxes(boxes, confidences, 0.3, 0.4)
+    idxs = cv2.dnn.NMSBoxes(boxes, confidences, config['nms_threshold'], config['nms_overlap'])
     idxs = np.asarray(idxs)
     if len(idxs) > 0:
         idxs_flat = idxs.flatten()
         best_idx = idxs_flat[np.argmax([confidences[i] for i in idxs_flat])]
         x, y, w, h = boxes[best_idx]
         classID = classIDs[best_idx]
-        label = LABELS[classID]
+        label = labels[classID]
         confidence = confidences[best_idx]
-        # Crop detected object for return
-        x1, y1, x2, y2 = max(0, x), max(0, y), min(frame_w, x+w), min(frame_h, y+h)
-        cropped = frame[y1:y2, x1:x2]
-        _, buffer = cv2.imencode('.png', cropped)
-        base_64_image = base64.b64encode(buffer).decode()
-        rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "label": label, "confidence": float(confidence)}
+        return x, y, w, h, label, confidence
+    return None
 
-        # --- Detection confirmation logic ---
-        area = w * h
-        stable = False
-        is_sharp = False
-        
-        if area >= MINIMUM_BOX_AREA:
-            boxes_queue.append((x, y, w, h))
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-            if len(boxes_queue) == VALID_BOUNDING_BOXES_REQUIRED:
-                xs = [b[0] for b in boxes_queue]
-                ys = [b[1] for b in boxes_queue]
-                # Check if movement is within 100 pixels for all pairs
-                stable = all(
-                    abs(xs[i] - xs[i - 1]) <= STABILITY_PIXEL_MOVEMENT_ALLOWED
-                    and abs(ys[i] - ys[i - 1]) <= STABILITY_PIXEL_MOVEMENT_ALLOWED
-                     for i in range(1, VALID_BOUNDING_BOXES_REQUIRED)
-                )
-                if not stable:
-                    boxes_queue.popleft()
-                    # todo: split queue at latest point not stable
+@app.route('/process_frame', methods=['POST'])
+def process_frame():
+    try:
+        global boxes_queue
+        data = request.get_json()
+        img_data = data['image'].split(',')[1]
+        img_bytes = base64.b64decode(img_data)
+        img = Image.open(BytesIO(img_bytes))
+        frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-            gray_crop = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-            laplacian_var = cv2.Laplacian(gray_crop, cv2.CV_64F).var()
-            is_sharp = laplacian_var > SHARPNESS_THRESHOLD
+        detection = yolo_detect(frame, net, output_layers, LABELS, YOLO_CONFIG)
+        if detection:
+            x, y, w, h, label, confidence = detection
+            (H, W) = frame.shape[:2]
+            x1, y1, x2, y2 = max(0, x), max(0, y), min(W, x+w), min(H, y+h)
+            cropped = frame[y1:y2, x1:x2]
+            _, buffer = cv2.imencode('.png', cropped)
+            base_64_image = base64.b64encode(buffer).decode()
+            rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "label": label, "confidence": float(confidence), "boxes_queue_len": len(boxes_queue)}
+            area = w * h
+            stable = False
+            is_sharp = False
+            if area >= DETECTION_CONFIG['min_area']:
+                boxes_queue.append((x, y, w, h))
+                if len(boxes_queue) == DETECTION_CONFIG['stability_frames']:
+                    xs = [b[0] for b in boxes_queue]
+                    ys = [b[1] for b in boxes_queue]
+                    stable = all(abs(xs[i] - xs[i-1]) <= DETECTION_CONFIG['max_movement'] and abs(ys[i] - ys[i-1]) <= DETECTION_CONFIG['max_movement'] for i in range(1, DETECTION_CONFIG['stability_frames']))
+                    if not stable:
+                        boxes_queue.popleft()
+                gray_crop = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+                laplacian_var = cv2.Laplacian(gray_crop, cv2.CV_64F).var()
+                is_sharp = laplacian_var > DETECTION_CONFIG['sharpness_threshold']
+            else:
+                boxes_queue.clear()
+            if area >= DETECTION_CONFIG['min_area'] and stable and is_sharp:
+                return jsonify(success=True, image=base_64_image, rect=rect)
+            else:
+                return jsonify(success=False, image=base_64_image, rect=rect)
         else:
             boxes_queue.clear()
-            
-        if area >= MINIMUM_BOX_AREA and stable and is_sharp:
-            boxes_queue.clear()
-            return jsonify(success=True, image=base_64_image, rect=rect)
-        else:
-            boxes_queue_len = int(len(boxes_queue))
-            return jsonify(success=False, image=base_64_image, rect=rect, boxes_queue_len=boxes_queue_len, is_sharp=bool(is_sharp))
-        # --- End detection confirmation logic ---
-    else:
-        boxes_queue.clear()
-        return jsonify(success=False, rect=None)
+            return jsonify(success=False, rect=None)
+    except Exception as e:
+        return jsonify(success=False, error=str(e)), 500
 
 @app.route('/generate_game_info', methods=['POST'])
 def generate_game_info():
