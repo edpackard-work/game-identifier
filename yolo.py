@@ -3,36 +3,65 @@ import numpy as np
 import base64
 from PIL import Image
 from io import BytesIO
+from typing import Tuple, TypedDict, Sequence, Deque
 
-def load_yolo(cfg, weights, names):
+
+class YoloConfig(TypedDict):
+    YOLO_INPUT_SIZE: int
+    YOLO_CONFIDENCE: float
+    YOLO_NMS: float
+    YOLO_OVERLAP: float
+    DETECTION_MIN_AREA: int
+    DETECTION_STABILITY_FRAMES: int
+    DETECTION_MAX_MOVEMENT: int
+    DETECTION_SHARPNESS: int
+
+
+class Rect(TypedDict):
+    x: int
+    y: int
+    w: int
+    h: int
+    label: str
+    confidence: float
+    boxes_queue_len: int
+
+
+Detection = Tuple[int, int, int, int, str, float] | None
+PostProcessReponse = Tuple[bool, str | None, Rect | None, bool | None]
+BoxesQueue = Deque[Tuple[int, int, int, int]]
+
+
+def load_yolo(cfg: str, weights: str, names: str) -> Tuple[cv2.dnn.Net, Sequence[str], list[str]]:
     net = cv2.dnn.readNetFromDarknet(cfg, weights)
     net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
     net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
     with open(names, 'r') as f:
         labels = [line.strip() for line in f.readlines()]
     layer_names = net.getLayerNames()
-    unconnected = net.getUnconnectedOutLayers()
-    if not isinstance(unconnected, np.ndarray):
-        unconnected = np.array(unconnected)
-    output_layers = [layer_names[i - 1] for i in unconnected.flatten()]
+    unconnected: np.ndarray = np.array(net.getUnconnectedOutLayers())
+    output_layers = [layer_names[int(i) - 1] for i in unconnected.flatten()]
     return net, output_layers, labels
 
-def get_frame(data):
-    img_data = data['image'].split(',')[1]
+
+def get_frame(data: str) -> np.ndarray:
+    img_data = data.split(',')[1]
     img_bytes = base64.b64decode(img_data)
     img = Image.open(BytesIO(img_bytes))
     frame = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
     return frame
 
-def detect(frame, net, output_layers, labels, config):
+
+def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], labels: list[str], config: YoloConfig) -> Detection:
     (H, W) = frame.shape[:2]
-    size = (config['YOLO_INPUT_SIZE'], config['YOLO_INPUT_SIZE'])
-    blob = cv2.dnn.blobFromImage(frame, 1/255.0, size, swapRB=True, crop=False)
+    size = config['YOLO_INPUT_SIZE']
+    blob = cv2.dnn.blobFromImage(
+        frame, 1/255.0, (size, size), swapRB=True, crop=False)
     net.setInput(blob)
-    layer_outputs = net.forward(output_layers)
-    boxes = []
-    confidences = []
-    classIDs = []
+    layer_outputs: Sequence[np.ndarray] = net.forward(output_layers)
+    boxes: list[list[int]] = []
+    confidences: list[float] = []
+    classIDs: list[np.intp] = []
     for output in layer_outputs:
         for detection in output:
             scores = detection[5:]
@@ -46,11 +75,13 @@ def detect(frame, net, output_layers, labels, config):
                 boxes.append([x, y, int(width), int(height)])
                 confidences.append(float(confidence))
                 classIDs.append(classID)
-    idxs = cv2.dnn.NMSBoxes(boxes, confidences, config['YOLO_NMS'], config['YOLO_OVERLAP'])
+    idxs = cv2.dnn.NMSBoxes(
+        boxes, confidences, config['YOLO_NMS'], config['YOLO_OVERLAP'])
     idxs = np.asarray(idxs)
     if len(idxs) > 0:
         idxs_flat = idxs.flatten()
-        best_idx = idxs_flat[np.argmax([confidences[i] for i in idxs_flat])]
+        best_idx: np.ndarray = idxs_flat[np.argmax(
+            [confidences[int(i)] for i in idxs_flat])]
         x, y, w, h = boxes[best_idx]
         classID = classIDs[best_idx]
         label = labels[classID]
@@ -58,7 +89,8 @@ def detect(frame, net, output_layers, labels, config):
         return x, y, w, h, label, confidence
     return None
 
-def postprocess(frame, detection, config, boxes_queue):
+
+def postprocess(frame: np.ndarray, detection: Detection, config: YoloConfig, boxes_queue: BoxesQueue) -> PostProcessReponse:
     if detection is None:
         boxes_queue.clear()
         return False, None, None, None
@@ -68,7 +100,8 @@ def postprocess(frame, detection, config, boxes_queue):
     cropped = frame[y1:y2, x1:x2]
     _, buffer = cv2.imencode('.png', cropped)
     base_64_image = base64.b64encode(buffer).decode()
-    rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "label": label, "confidence": float(confidence), "boxes_queue_len": len(boxes_queue)}
+    rect: Rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(
+        h), "label": label, "confidence": float(confidence), "boxes_queue_len": len(boxes_queue)}
     area = w * h
     stable = False
     is_sharp = False
