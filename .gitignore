@@ -1,3 +1,4 @@
 config.json
 static/debug
 .DS_Store
+__pycache__

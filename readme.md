@@ -6,14 +6,7 @@ The underlying yolo model was trained on 300+ images of Game Boy, Game Boy Color
 
 This is a really good tutorial for training yolo models: https://github.com/moises-dias/yolo-opencv-detector
 
-Add `config.json` to root of project with
-
-```
-{
-    "CV2_DEBUG": true,
-    "OPENAI_API_KEY": <your key>
-}
-```
+Copy `config.json.example` and rename to `config.json`. Add your Open AI API key where indicated.
 
 `pip install` requirements and then
 `python3 app.py`
