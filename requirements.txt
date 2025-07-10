@@ -1,0 +1,6 @@
+flask
+openai
+pydantic
+numpy
+opencv-python
+Pillow
