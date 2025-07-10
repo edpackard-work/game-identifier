@@ -6,11 +6,15 @@ The underlying yolo model was trained on 300+ images of Game Boy, Game Boy Color
 
 This is a really good tutorial for training yolo models: https://github.com/moises-dias/yolo-opencv-detector
 
-Copy `config.json.example` and rename to `config.json`. Add your Open AI API key where indicated.
+Create a file called `config.json`:
+
+```
+{
+  "OPENAI_API_KEY": <your OpenAI API key>
+}
+```
 
 `pip install` requirements and then
 `python3 app.py`
 
 Open browser `http://localhost:5001` and give permission to use webcam if asked. Hold a game cartridge up - when the bounding box goes white, hold steady until the webcam takes a picture. If the bounding box is red, it means the image is not sharp enough - keep holding steady, or improve lighting conditions etc. If the bounding box is blue, it means the cartridge needs to fill a bigger percentage of the screen.
-
-CV2_DEBUG, when set to true, logs the AI response to the image.

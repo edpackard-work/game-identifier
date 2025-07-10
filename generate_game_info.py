@@ -6,10 +6,6 @@ from openai.types.responses import EasyInputMessageParam, ResponseInputImagePara
 from openai.types.responses.response_input_item_param import Message
 
 
-class OpenAIConfig(TypedDict):
-    CV2_DEBUG: bool
-
-
 class GameInfoResponseBody(TypedDict):
     success: bool
     error: NotRequired[str]
@@ -27,7 +23,7 @@ class GameInfoResponseBody(TypedDict):
 GameInfoResponseObject = Tuple[Response, Literal[200, 400]]
 
 
-def generate_game_info(openai_client: OpenAI, image: str, config: OpenAIConfig) -> GameInfoResponseObject:
+def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameInfoResponseObject:
     if not image:
         responseBody: GameInfoResponseBody = {
             'success': False, 'error': 'Missing image'}
@@ -83,7 +79,8 @@ def generate_game_info(openai_client: OpenAI, image: str, config: OpenAIConfig) 
             'region': replyDict.get('region')
         }
 
-        if config.get("CV2_DEBUG"):
+        if debug:
+            print(replyDict.get('reasoning'))
             print(responseBody)
         return jsonify(responseBody), 200
     else:

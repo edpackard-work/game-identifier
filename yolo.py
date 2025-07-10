@@ -4,17 +4,7 @@ import base64
 from PIL import Image
 from io import BytesIO
 from typing import Tuple, TypedDict, Sequence, Deque
-
-
-class YoloConfig(TypedDict):
-    YOLO_INPUT_SIZE: int
-    YOLO_CONFIDENCE: float
-    YOLO_NMS: float
-    YOLO_OVERLAP: float
-    DETECTION_MIN_AREA: int
-    DETECTION_STABILITY_FRAMES: int
-    DETECTION_MAX_MOVEMENT: int
-    DETECTION_SHARPNESS: int
+from constants import Constants
 
 
 class Rect(TypedDict):
@@ -52,9 +42,9 @@ def get_frame(data: str) -> np.ndarray:
     return frame
 
 
-def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], labels: list[str], config: YoloConfig) -> Detection:
+def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], labels: list[str], constants: Constants) -> Detection:
     (H, W) = frame.shape[:2]
-    size = config['YOLO_INPUT_SIZE']
+    size = constants['YOLO_INPUT_SIZE']
     blob = cv2.dnn.blobFromImage(
         frame, 1/255.0, (size, size), swapRB=True, crop=False)
     net.setInput(blob)
@@ -67,7 +57,7 @@ def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], la
             scores = detection[5:]
             classID = np.argmax(scores)
             confidence = scores[classID]
-            if confidence > config['YOLO_CONFIDENCE']:
+            if confidence > constants['YOLO_CONFIDENCE']:
                 box = detection[0:4] * np.array([W, H, W, H])
                 (centerX, centerY, width, height) = box.astype('int')
                 x = int(centerX - (width / 2))
@@ -76,7 +66,7 @@ def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], la
                 confidences.append(float(confidence))
                 classIDs.append(classID)
     idxs = cv2.dnn.NMSBoxes(
-        boxes, confidences, config['YOLO_NMS'], config['YOLO_OVERLAP'])
+        boxes, confidences, constants['YOLO_NMS'], constants['YOLO_OVERLAP'])
     idxs = np.asarray(idxs)
     if len(idxs) > 0:
         idxs_flat = idxs.flatten()
@@ -90,7 +80,7 @@ def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], la
     return None
 
 
-def postprocess(frame: np.ndarray, detection: Detection, config: YoloConfig, boxes_queue: BoxesQueue) -> PostProcessReponse:
+def postprocess(frame: np.ndarray, detection: Detection, constants: Constants, boxes_queue: BoxesQueue) -> PostProcessReponse:
     if detection is None:
         boxes_queue.clear()
         return False, None, None, None
@@ -105,24 +95,24 @@ def postprocess(frame: np.ndarray, detection: Detection, config: YoloConfig, box
     area = w * h
     stable = False
     is_sharp = False
-    if area >= config['DETECTION_MIN_AREA']:
+    if area >= constants['DETECTION_MIN_AREA']:
         boxes_queue.append((x, y, w, h))
-        if len(boxes_queue) == config['DETECTION_STABILITY_FRAMES']:
+        if len(boxes_queue) == constants['DETECTION_STABILITY_FRAMES']:
             xs = [b[0] for b in boxes_queue]
             ys = [b[1] for b in boxes_queue]
             stable = all(
-                abs(xs[i] - xs[i-1]) <= config['DETECTION_MAX_MOVEMENT'] and
-                abs(ys[i] - ys[i-1]) <= config['DETECTION_MAX_MOVEMENT']
-                for i in range(1, config['DETECTION_STABILITY_FRAMES'])
+                abs(xs[i] - xs[i-1]) <= constants['DETECTION_MAX_MOVEMENT'] and
+                abs(ys[i] - ys[i-1]) <= constants['DETECTION_MAX_MOVEMENT']
+                for i in range(1, constants['DETECTION_STABILITY_FRAMES'])
             )
             if not stable:
                 boxes_queue.popleft()
         gray_crop = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
         laplacian_var = cv2.Laplacian(gray_crop, cv2.CV_64F).var()
-        is_sharp = laplacian_var > config['DETECTION_SHARPNESS']
+        is_sharp = laplacian_var > constants['DETECTION_SHARPNESS']
     else:
         boxes_queue.clear()
-    if area >= config['DETECTION_MIN_AREA'] and stable and is_sharp:
+    if area >= constants['DETECTION_MIN_AREA'] and stable and is_sharp:
         boxes_queue.clear()
         return True, base_64_image, rect, bool(is_sharp)
     else:
