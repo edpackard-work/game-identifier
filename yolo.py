@@ -3,7 +3,7 @@ import numpy as np
 import base64
 from PIL import Image
 from io import BytesIO
-from typing import Tuple, TypedDict, Sequence, Deque
+from typing import Tuple, TypedDict, Sequence, Deque, Any
 from constants import Constants
 
 
@@ -29,12 +29,12 @@ def load_yolo(cfg: str, weights: str, names: str) -> Tuple[cv2.dnn.Net, Sequence
     with open(names, 'r') as f:
         labels = [line.strip() for line in f.readlines()]
     layer_names = net.getLayerNames()
-    unconnected: np.ndarray = np.array(net.getUnconnectedOutLayers())
+    unconnected: np.typing.ArrayLike = np.array(net.getUnconnectedOutLayers())
     output_layers = [layer_names[int(i) - 1] for i in unconnected.flatten()]
     return net, output_layers, labels
 
 
-def get_frame(data: str) -> np.ndarray:
+def get_frame(data: str) -> cv2.typing.MatLike:
     img_data = data.split(',')[1]
     img_bytes = base64.b64decode(img_data)
     img = Image.open(BytesIO(img_bytes))
@@ -42,16 +42,17 @@ def get_frame(data: str) -> np.ndarray:
     return frame
 
 
-def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], labels: list[str], constants: Constants) -> Detection:
+def detect(frame: cv2.typing.MatLike, net: cv2.dnn.Net, output_layers: Sequence[str], labels: list[str], constants: Constants) -> Detection:
     (H, W) = frame.shape[:2]
     size = constants['YOLO_INPUT_SIZE']
     blob = cv2.dnn.blobFromImage(
         frame, 1/255.0, (size, size), swapRB=True, crop=False)
     net.setInput(blob)
-    layer_outputs: Sequence[np.ndarray] = net.forward(output_layers)
+    layer_outputs: Sequence[cv2.typing.MatLike] = net.forward(output_layers)
     boxes: list[list[int]] = []
     confidences: list[float] = []
     classIDs: list[np.intp] = []
+    output: np.typing.NDArray[Any]
     for output in layer_outputs:
         for detection in output:
             scores = detection[5:]
@@ -70,7 +71,7 @@ def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], la
     idxs = np.asarray(idxs)
     if len(idxs) > 0:
         idxs_flat = idxs.flatten()
-        best_idx: np.ndarray = idxs_flat[np.argmax(
+        best_idx: np.typing.NDArray[np.int_] = idxs_flat[np.argmax(
             [confidences[int(i)] for i in idxs_flat])]
         x, y, w, h = boxes[best_idx]
         classID = classIDs[best_idx]
@@ -80,7 +81,7 @@ def detect(frame: np.ndarray, net: cv2.dnn.Net, output_layers: Sequence[str], la
     return None
 
 
-def postprocess(frame: np.ndarray, detection: Detection, constants: Constants, boxes_queue: BoxesQueue) -> PostProcessReponse:
+def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Constants, boxes_queue: BoxesQueue) -> PostProcessReponse:
     if detection is None:
         boxes_queue.clear()
         return False, None, None, None
