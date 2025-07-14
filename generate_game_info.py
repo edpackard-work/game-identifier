@@ -3,12 +3,12 @@ from typing import TypedDict, NotRequired
 from openai import OpenAI
 from openai.types.responses import EasyInputMessageParam, ResponseInputImageParam
 from openai.types.responses.response_input_item_param import Message
+import logging
 
 
 class GameInfoResponseBody(TypedDict):
     success: bool
     error: NotRequired[str | None]
-    reasoning: NotRequired[str | None]
     isItAVideoGame: NotRequired[bool | None]
     title: NotRequired[str | None]
     system: NotRequired[str | None]
@@ -20,7 +20,9 @@ class GameInfoResponseBody(TypedDict):
 
 
 def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameInfoResponseBody:
+    logging.debug("generate_game_info called with image: %s", 'provided' if image else 'missing')
     if not image:
+        logging.error("No image provided to generate_game_info")
         return {'success': False, 'error': 'Missing image'}
 
     class GameDetails(BaseModel):
@@ -50,34 +52,36 @@ def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameIn
         "type": "input_image", "image_url": f"data:image/jpeg;base64,{image}", "detail": "auto"}
     user_message: Message = {"role": "user", "content": [input_image]}
 
-    response = openai_client.responses.parse(
-        # model="gpt-4.1",
-        model="gpt-4o-mini",
-        temperature=0,
-        input=[system_message, user_message],
-        text_format=GameDetails,
-    )
-
-    reply: GameDetails | None = response.output_parsed
-    if reply:
-        replyDict = reply.model_dump()
-        responseBody: GameInfoResponseBody = {
-            'success': True,
-            'isItAVideoGame': replyDict.get('isItAVideoGame'),
-            'title': replyDict.get('title'),
-            'system': replyDict.get('system'),
-            'genre': replyDict.get('genre'),
-            'publisher': replyDict.get('publisher'),
-            'releaseYear': replyDict.get('releaseYear'),
-            'labelCode': replyDict.get('labelCode'),
-            'region': replyDict.get('region')
-        }
-
-        if debug:
-            print(replyDict.get('reasoning'))
-            print(responseBody)
-        return responseBody
-    else:
-        return {"success": False}
-
-#  to do: proper error catching and handling
+    try:
+        response = openai_client.responses.parse(
+            # model="gpt-4.1",
+            model="gpt-4o-mini",
+            temperature=0,
+            input=[system_message, user_message],
+            text_format=GameDetails,
+        )
+        reply: GameDetails | None = response.output_parsed
+        if reply:
+            replyDict = reply.model_dump()
+            responseBody: GameInfoResponseBody = {
+                'success': True,
+                'isItAVideoGame': replyDict.get('isItAVideoGame'),
+                'title': replyDict.get('title'),
+                'system': replyDict.get('system'),
+                'genre': replyDict.get('genre'),
+                'publisher': replyDict.get('publisher'),
+                'releaseYear': replyDict.get('releaseYear'),
+                'labelCode': replyDict.get('labelCode'),
+                'region': replyDict.get('region'),
+                'error': None,
+            }
+            if debug:
+                logging.debug("OpenAI reasoning: %s", replyDict.get('reasoning'))
+                logging.debug("Game info response: %s", responseBody)
+            return responseBody
+        else:
+            logging.error("No reply from OpenAI API")
+            return {"success": False, 'error': 'No reply from OpenAI API'}
+    except Exception as e:
+        logging.exception("Exception in generate_game_info")
+        return {"success": False, 'error': str(e)}

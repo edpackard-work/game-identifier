@@ -11,6 +11,15 @@ from constants import get_constants, Constants
 
 from typing import cast, Tuple
 
+import logging
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+
+logging.info("Starting Flask app...")
+
 ApiResponse = Tuple[Response, int]
 
 
@@ -40,6 +49,7 @@ def create_app() -> Flask:
 def register_routes(app: Flask):
     @app.route('/')
     def index() -> str:  # type: ignore
+        logging.debug("Received request for index page")
         return render_template('index.html')
 
     @app.route('/process_frame', methods=['POST'])
@@ -57,8 +67,7 @@ def register_routes(app: Flask):
                 frame, detection, constants, boxes_queue)
             return jsonify(responseBody), 200
         except Exception as e:
-            if app.debug:
-                print(e)  # todo: proper logging
+            logging.exception("An error occurred in process_frame")
             return jsonify(success=False, error=str(e)), 500
 
     @app.route('/generate_game_info', methods=['POST'])

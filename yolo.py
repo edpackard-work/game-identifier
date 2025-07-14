@@ -5,6 +5,7 @@ from PIL import Image
 from io import BytesIO
 from typing import Tuple, TypedDict, Sequence, Deque, Any, NotRequired
 from constants import Constants
+import logging
 
 
 class Rect(TypedDict):
@@ -29,15 +30,21 @@ BoxesQueue = Deque[Tuple[int, int, int, int]]
 
 
 def load_yolo(cfg: str, weights: str, names: str) -> Tuple[cv2.dnn.Net, Sequence[str], list[str]]:
-    net = cv2.dnn.readNetFromDarknet(cfg, weights)
-    net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-    net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
-    with open(names, 'r') as f:
-        labels = [line.strip() for line in f.readlines()]
-    layer_names = net.getLayerNames()
-    unconnected: np.typing.ArrayLike = np.array(net.getUnconnectedOutLayers())
-    output_layers = [layer_names[int(i) - 1] for i in unconnected.flatten()]
-    return net, output_layers, labels
+    logging.info("Loading YOLO model...")
+    try:
+        net = cv2.dnn.readNetFromDarknet(cfg, weights)
+        net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+        net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+        with open(names, 'r') as f:
+            labels = [line.strip() for line in f.readlines()]
+        layer_names = net.getLayerNames()
+        unconnected: np.typing.ArrayLike = np.array(net.getUnconnectedOutLayers())
+        output_layers = [layer_names[int(i) - 1] for i in unconnected.flatten()]
+        logging.info("YOLO model loaded successfully")
+        return net, output_layers, labels
+    except Exception as e:
+        logging.exception("Error loading YOLO model")
+        raise
 
 
 def get_frame(data: str) -> cv2.typing.MatLike:
@@ -49,45 +56,50 @@ def get_frame(data: str) -> cv2.typing.MatLike:
 
 
 def detect(frame: cv2.typing.MatLike, net: cv2.dnn.Net, output_layers: Sequence[str], labels: list[str], constants: Constants) -> Detection:
-    (H, W) = frame.shape[:2]
-    size = constants['YOLO_INPUT_SIZE']
-    blob = cv2.dnn.blobFromImage(
-        frame, 1/255.0, (size, size), swapRB=True, crop=False)
-    net.setInput(blob)
-    layer_outputs: Sequence[cv2.typing.MatLike] = net.forward(output_layers)
-    boxes: list[list[int]] = []
-    confidences: list[float] = []
-    classIDs: list[np.intp] = []
-    output: np.typing.NDArray[Any]
+    try:
+        (H, W) = frame.shape[:2]
+        size = constants['YOLO_INPUT_SIZE']
+        blob = cv2.dnn.blobFromImage(
+            frame, 1/255.0, (size, size), swapRB=True, crop=False)
+        net.setInput(blob)
+        layer_outputs: Sequence[cv2.typing.MatLike] = net.forward(output_layers)
+        boxes: list[list[int]] = []
+        confidences: list[float] = []
+        classIDs: list[np.intp] = []
+        output: np.typing.NDArray[Any]
 
-    for output in layer_outputs:
-        for detection in output:
-            scores = detection[5:]
-            classID = np.argmax(scores)
-            confidence = scores[classID]
-            if confidence > constants['YOLO_CONFIDENCE']:
-                box = detection[0:4] * np.array([W, H, W, H])
-                (centerX, centerY, width, height) = box.astype('int')
-                x = int(centerX - (width / 2))
-                y = int(centerY - (height / 2))
-                boxes.append([x, y, int(width), int(height)])
-                confidences.append(float(confidence))
-                classIDs.append(classID)
+        for output in layer_outputs:
+            for detection in output:
+                scores = detection[5:]
+                classID = np.argmax(scores)
+                confidence = scores[classID]
+                if confidence > constants['YOLO_CONFIDENCE']:
+                    box = detection[0:4] * np.array([W, H, W, H])
+                    (centerX, centerY, width, height) = box.astype('int')
+                    x = int(centerX - (width / 2))
+                    y = int(centerY - (height / 2))
+                    boxes.append([x, y, int(width), int(height)])
+                    confidences.append(float(confidence))
+                    classIDs.append(classID)
 
-    idxs = cv2.dnn.NMSBoxes(
-        boxes, confidences, constants['YOLO_NMS'], constants['YOLO_OVERLAP'])
-    idxs = np.asarray(idxs)
+        idxs = cv2.dnn.NMSBoxes(
+            boxes, confidences, constants['YOLO_NMS'], constants['YOLO_OVERLAP'])
+        idxs = np.asarray(idxs)
 
-    if len(idxs) > 0:
-        idxs_flat = idxs.flatten()
-        best_idx: np.typing.NDArray[np.int_] = idxs_flat[np.argmax(
-            [confidences[int(i)] for i in idxs_flat])]
-        x, y, w, h = boxes[best_idx]
-        classID = classIDs[best_idx]
-        label = labels[classID]
-        confidence = confidences[best_idx]
-        return x, y, w, h, label, confidence
-    return None
+        if len(idxs) > 0:
+            idxs_flat = idxs.flatten()
+            best_idx: np.typing.NDArray[np.int_] = idxs_flat[np.argmax(
+                [confidences[int(i)] for i in idxs_flat])]
+            x, y, w, h = boxes[best_idx]
+            classID = classIDs[best_idx]
+            label = labels[classID]
+            confidence = confidences[best_idx]
+            logging.debug("Detection complete, found %d objects", len(idxs))
+            return x, y, w, h, label, confidence
+        return None
+    except Exception as e:
+        logging.exception("Error during detection")
+        raise
 
 
 def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Constants, boxes_queue: BoxesQueue) -> PostProcessResponseBody:
