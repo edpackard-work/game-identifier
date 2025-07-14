@@ -9,9 +9,9 @@ from yolo import load_yolo, detect, postprocess, get_frame
 from generate_game_info import generate_game_info
 from constants import get_constants, Constants
 
-from typing import cast, Union, Tuple
+from typing import cast, Tuple
 
-ApiResponse = Union[Response, Tuple[Response, int]]
+ApiResponse = Tuple[Response, int]
 
 
 def create_app() -> Flask:
@@ -54,11 +54,12 @@ def register_routes(app: Flask):
             boxes_queue = getattr(current_app, 'boxes_queue')
             constants = getattr(current_app, 'constants')
             detection = detect(frame, net, output_layers, labels, constants)
-            success, base_64_image, rect, is_sharp = postprocess(
+            responseBody = postprocess(
                 frame, detection, constants, boxes_queue)
-            return jsonify(success=success, image=base_64_image, rect=rect, is_sharp=is_sharp, boxes_queue_len=len(boxes_queue))
+            return jsonify(responseBody), 200
         except Exception as e:
-            print(e)  # if app.debug?
+            if app.debug:
+                print(e)  # todo: proper logging
             return jsonify(success=False, error=str(e)), 500
 
     @app.route('/generate_game_info', methods=['POST'])
@@ -66,8 +67,12 @@ def register_routes(app: Flask):
         data = request.get_json()
         image = data.get('image')
         openai_client = getattr(current_app, 'openai_client')
-        response = generate_game_info(openai_client, image, current_app.debug)
-        return response
+        responseBody = generate_game_info(
+            openai_client, image, current_app.debug)
+        if responseBody['success']:
+            return jsonify(responseBody), 200
+        else:
+            return jsonify(responseBody), 400
 
 
 if __name__ == '__main__':

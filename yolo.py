@@ -3,7 +3,7 @@ import numpy as np
 import base64
 from PIL import Image
 from io import BytesIO
-from typing import Tuple, TypedDict, Sequence, Deque, Any
+from typing import Tuple, TypedDict, Sequence, Deque, Any, NotRequired
 from constants import Constants
 
 
@@ -14,11 +14,17 @@ class Rect(TypedDict):
     h: int
     label: str
     confidence: float
-    boxes_queue_len: int
+
+
+class PostProcessResponseBody(TypedDict):
+    success: bool
+    image: NotRequired[str | None]
+    rect: NotRequired[Rect | None]
+    is_sharp: NotRequired[bool | None]
+    boxes_queue_len: NotRequired[int | None]
 
 
 Detection = Tuple[int, int, int, int, str, float] | None
-PostProcessReponse = Tuple[bool, str | None, Rect | None, bool | None]
 BoxesQueue = Deque[Tuple[int, int, int, int]]
 
 
@@ -53,6 +59,7 @@ def detect(frame: cv2.typing.MatLike, net: cv2.dnn.Net, output_layers: Sequence[
     confidences: list[float] = []
     classIDs: list[np.intp] = []
     output: np.typing.NDArray[Any]
+
     for output in layer_outputs:
         for detection in output:
             scores = detection[5:]
@@ -66,9 +73,11 @@ def detect(frame: cv2.typing.MatLike, net: cv2.dnn.Net, output_layers: Sequence[
                 boxes.append([x, y, int(width), int(height)])
                 confidences.append(float(confidence))
                 classIDs.append(classID)
+
     idxs = cv2.dnn.NMSBoxes(
         boxes, confidences, constants['YOLO_NMS'], constants['YOLO_OVERLAP'])
     idxs = np.asarray(idxs)
+
     if len(idxs) > 0:
         idxs_flat = idxs.flatten()
         best_idx: np.typing.NDArray[np.int_] = idxs_flat[np.argmax(
@@ -81,10 +90,12 @@ def detect(frame: cv2.typing.MatLike, net: cv2.dnn.Net, output_layers: Sequence[
     return None
 
 
-def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Constants, boxes_queue: BoxesQueue) -> PostProcessReponse:
+def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Constants, boxes_queue: BoxesQueue) -> PostProcessResponseBody:
     if detection is None:
         boxes_queue.clear()
-        return False, None, None, None
+        responseBody: PostProcessResponseBody = {"success": False}
+        return responseBody
+
     x, y, w, h, label, confidence = detection
     (H, W) = frame.shape[:2]
     x1, y1, x2, y2 = max(0, x), max(0, y), min(W, x+w), min(H, y+h)
@@ -92,10 +103,11 @@ def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Cons
     _, buffer = cv2.imencode('.png', cropped)
     base_64_image = base64.b64encode(buffer).decode()
     rect: Rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(
-        h), "label": label, "confidence": float(confidence), "boxes_queue_len": len(boxes_queue)}
+        h), "label": label, "confidence": float(confidence)}
     area = w * h
     stable = False
     is_sharp = False
+
     if area >= constants['DETECTION_MIN_AREA']:
         boxes_queue.append((x, y, w, h))
         if len(boxes_queue) == constants['DETECTION_STABILITY_FRAMES']:
@@ -113,8 +125,19 @@ def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Cons
         is_sharp = laplacian_var > constants['DETECTION_SHARPNESS']
     else:
         boxes_queue.clear()
+
+    responseBody: PostProcessResponseBody = {
+        'success': True,
+        'image': base_64_image,
+        'rect': rect,
+        'is_sharp': bool(is_sharp),
+        'boxes_queue_len': len(boxes_queue)
+    }
+
     if area >= constants['DETECTION_MIN_AREA'] and stable and is_sharp:
         boxes_queue.clear()
-        return True, base_64_image, rect, bool(is_sharp)
+        responseBody['success'] = True
     else:
-        return False, base_64_image, rect, bool(is_sharp)
+        responseBody['success'] = False
+
+    return responseBody

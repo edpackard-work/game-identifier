@@ -1,14 +1,13 @@
 from pydantic import BaseModel
-from typing import Tuple, TypedDict, Literal, NotRequired
+from typing import TypedDict, NotRequired
 from openai import OpenAI
-from flask import jsonify, Response
 from openai.types.responses import EasyInputMessageParam, ResponseInputImageParam
 from openai.types.responses.response_input_item_param import Message
 
 
 class GameInfoResponseBody(TypedDict):
     success: bool
-    error: NotRequired[str]
+    error: NotRequired[str | None]
     reasoning: NotRequired[str | None]
     isItAVideoGame: NotRequired[bool | None]
     title: NotRequired[str | None]
@@ -20,14 +19,9 @@ class GameInfoResponseBody(TypedDict):
     region: NotRequired[str | None]
 
 
-GameInfoResponseObject = Tuple[Response, Literal[200, 400]]
-
-
-def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameInfoResponseObject:
+def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameInfoResponseBody:
     if not image:
-        responseBody: GameInfoResponseBody = {
-            'success': False, 'error': 'Missing image'}
-        return jsonify(responseBody), 400
+        return {'success': False, 'error': 'Missing image'}
 
     class GameDetails(BaseModel):
         reasoning: str
@@ -82,8 +76,8 @@ def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameIn
         if debug:
             print(replyDict.get('reasoning'))
             print(responseBody)
-        return jsonify(responseBody), 200
+        return responseBody
     else:
-        return jsonify({"success": False}), 400
+        return {"success": False}
 
 #  to do: proper error catching and handling
