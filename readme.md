@@ -8,15 +8,64 @@ The underlying yolo model was trained on 300+ images of Game Boy, Game Boy Color
 
 This is a really good tutorial for training yolo models: https://github.com/moises-dias/yolo-opencv-detector
 
-Create a file called `config.json`:
+## Get started
 
-```
-{
-  "OPENAI_API_KEY": <your OpenAI API key>
-}
-```
+Either:
+
+Set an env var `OPENAI_API_KEY=your_actual_key_here`
 
 `pip install` requirements and then
 `python3 app.py`
 
-Open browser `http://localhost:5001` and give permission to use webcam if asked. Hold a game cartridge up - when the bounding box goes white, hold steady until the webcam takes a picture. If the bounding box is red, it means the image is not sharp enough - keep holding steady, or improve lighting conditions etc. If the bounding box is blue, it means the cartridge needs to fill a bigger percentage of the screen.
+Or follow the docker instructions below. 
+
+Once up and running open browser `http://localhost:5001` and give permission to use webcam if asked. Hold a game cartridge up - when the bounding box goes white, hold steady until the webcam takes a picture. If the bounding box is red, it means the image is not sharp enough - keep holding steady, or improve lighting conditions etc. If the bounding box is blue, it means the cartridge needs to fill a bigger percentage of the screen.
+
+## Docker Usage
+
+### Build the Docker image
+```sh
+docker build -t identifier-app .
+```
+
+### Run the Docker container (with OPENAI_API_KEY)
+
+#### Option 1: Pass the API key directly
+```sh
+docker run -p 5001:5001 -e OPENAI_API_KEY=your_actual_key_here identifier-app
+```
+
+#### Option 2: Use a .env file
+Create a `.env` file in your project root with the following content:
+```
+OPENAI_API_KEY=your_actual_key_here
+```
+Then run:
+```sh
+docker run --env-file .env -p 5001:5001 identifier-app
+```
+
+## Docker Compose Development Workflow
+
+For easier development with hot reloading, use Docker Compose. This setup mounts your code into the container, so changes are reflected immediately (if Flask debug mode is enabled).
+
+### 1. Create a `.env` file in your project root:
+```
+OPENAI_API_KEY=your_actual_key_here
+```
+
+### 2. Start the app with Docker Compose:
+```sh
+docker-compose up
+```
+
+- The app will be available at http://localhost:5001
+- Any code changes will be reflected automatically (if `debug=True` in your app).
+- To stop, press Ctrl+C or run `docker-compose down`.
+
+### 3. Rebuilding (if you change dependencies):
+```sh
+docker-compose build
+```
+
+---

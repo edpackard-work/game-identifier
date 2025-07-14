@@ -1,6 +1,6 @@
-import json
 import os
 from collections import deque
+from dotenv import load_dotenv
 
 from flask import Flask, render_template, request, jsonify, current_app, Response
 from openai import OpenAI
@@ -16,8 +16,7 @@ ApiResponse = Tuple[Response, int]
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    if os.path.exists('config.json'):
-        app.config.from_file('config.json', load=json.load)
+    load_dotenv()
     if os.getenv('OPENAI_API_KEY'):
         app.config['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY')
     constants: Constants = get_constants()
@@ -77,4 +76,4 @@ def register_routes(app: Flask):
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True, host='127.0.0.1', port=5001)
+    app.run(debug=True, host="0.0.0.0", port=5001)
