@@ -21,33 +21,7 @@ Or follow the docker instructions below.
 
 Once up and running open browser `http://localhost:5001` and give permission to use webcam if asked. Hold a game cartridge up - when the bounding box goes white, hold steady until the webcam takes a picture. If the bounding box is red, it means the image is not sharp enough - keep holding steady, or improve lighting conditions etc. If the bounding box is blue, it means the cartridge needs to fill a bigger percentage of the screen.
 
-## Docker Usage
-
-### Build the Docker image
-```sh
-docker build -t identifier-app .
-```
-
-### Run the Docker container (with OPENAI_API_KEY)
-
-#### Option 1: Pass the API key directly
-```sh
-docker run -p 5001:5001 -e OPENAI_API_KEY=your_actual_key_here identifier-app
-```
-
-#### Option 2: Use a .env file
-Create a `.env` file in your project root with the following content:
-```
-OPENAI_API_KEY=your_actual_key_here
-```
-Then run:
-```sh
-docker run --env-file .env -p 5001:5001 identifier-app
-```
-
 ## Docker Compose Development Workflow
-
-For easier development with hot reloading, use Docker Compose. This setup mounts your code into the container, so changes are reflected immediately (if Flask debug mode is enabled).
 
 ### 1. Create a `.env` file in your project root:
 ```
