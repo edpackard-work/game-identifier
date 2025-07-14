@@ -27,3 +27,10 @@ video {
     font-size: 1rem;
     text-align: center;
 }
+#warningMsg {
+    display: none;
+    text-align: center;
+    color: red;
+    font-size: 1.2rem;
+    margin: 1rem;
+}

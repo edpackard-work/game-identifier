@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Video Game Label Identifier</title>
+  <title>Retro Game Identifier</title>
   <link rel="stylesheet" href="static/css/styles.css" />
   <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 </head>
 <body>
-  <h1 style="text-align: center">Video Game Cartridge Identifier</h1>
+  <h1 style="text-align: center">Retro Game Identifier</h1>
   <div id="container">
     <video id="webcam" autoplay playsinline width="640" height="480"></video>
     <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
@@ -21,6 +21,7 @@
     <h2>Game Info</h2>
     <pre id="gameJson"></pre>
   </div>
+  <div id="warningMsg" style="display: none;"></div>
   <button id="tryAgainBtn" onclick="resetApp()">Try Again</button>
   <script src="static/javascripts/script.js"></script>
 </body>

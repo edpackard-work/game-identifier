@@ -6,13 +6,18 @@ const loading = document.getElementById('loading');
 const tryAgainBtn = document.getElementById('tryAgainBtn');
 const gameInfoDiv = document.getElementById('gameInfo');
 const gameJsonEl = document.getElementById('gameJson');
+const timeoutMsg = document.getElementById('timeoutMsg');
 
 let stream = null;
 let pollingInterval = null;
+let timeoutTimeMs = 0;
 let boundedRect = null;
 let boxesQueueLen = 0;
 let isSharp = false;
 let objectedDetected = false;
+
+const POLLING_INTERVAL_MS = 200;
+const TIMEOUT_LIMIT_MS = 20000;
 
 async function initWebcam() {
   try {
@@ -26,7 +31,7 @@ async function initWebcam() {
       drawVideoToCanvas();
     };
 
-    pollingInterval = setInterval(captureAndSendFrame, 200);
+    pollingInterval = setInterval(captureAndSendFrame, POLLING_INTERVAL_MS);
   } catch (err) {
     alert('Could not access webcam.');
   }
@@ -73,11 +78,11 @@ async function captureAndSendFrame() {
     result = await response.json();
 
     if (result.success) {
+      timeoutTimeMs = 0;
       stopWebcam();
       const soundEffect = document.getElementById('soundEffect');
       soundEffect.play();
 
-      canvas.style.display = 'none';
       capturedImage.src = `data:image/jpeg;base64,${result.image}`;
       capturedImage.style.display = 'block';
       loading.style.display = 'block';
@@ -109,23 +114,34 @@ async function captureAndSendFrame() {
         tryAgainBtn.style.display = 'block';
       }
     } else {
+      timeoutTimeMs = result.rect ? 0 : timeoutTimeMs + POLLING_INTERVAL_MS;
       isSharp = result.is_sharp;
       boxesQueueLen = result.boxes_queue_len;
       boundedRect = result.rect;
+      if (timeoutTimeMs >= TIMEOUT_LIMIT_MS) {
+        stopWebcam('Detection timed out');
+      }
     }
   } catch (err) {
     console.log(err);
-    stopWebcam();
-    canvas.style.display = 'none';
-    tryAgainBtn.style.display = 'block';
+    stopWebcam('There has been an error');
   }
 }
 
-function stopWebcam() {
+function stopWebcam(warningMessage) {
+  canvas.style.display = 'none';
+
   if (pollingInterval) clearInterval(pollingInterval);
+
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
     stream = null;
+  }
+
+  if (warningMessage) {
+    warningMsg.textContent = message;
+    warningMsg.style.display = 'block';
+    tryAgainBtn.style.display = 'block';
   }
 }
 
@@ -135,6 +151,8 @@ function resetApp() {
   tryAgainBtn.style.display = 'none';
   gameJsonEl.textContent = '';
   loading.style.display = 'none';
+  timeoutTimeMs = 0;
+  warningMsg.style.display = 'none';
   initWebcam();
 }
 
