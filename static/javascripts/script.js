@@ -61,63 +61,65 @@ function drawVideoToCanvas() {
   requestAnimationFrame(drawVideoToCanvas);
 }
 
+async function apiPost(route, imageData) {
+  const response = await fetch(route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: imageData }),
+  });
+  return response.json();
+}
+
+function updateGameInfo(gameInfo) {
+  const {
+    isItAVideoGame,
+    title,
+    system,
+    genre,
+    publisher,
+    releaseYear,
+    region,
+    labelCode,
+  } = gameInfo;
+  gameJsonEl.textContent = isItAVideoGame
+    ? `Title: ${title}\nSystem: ${system}\nGenre: ${genre}\nPublisher: ${publisher}\nRelease Year: ${releaseYear}\nRegion: ${region}\nLabel Code: ${labelCode}`
+    : 'Sorry, this is not a video game!';
+  gameInfoDiv.style.display = 'block';
+  tryAgainBtn.style.display = 'block';
+}
+
 async function captureAndSendFrame() {
   if (!stream || video.videoWidth === 0) return;
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   const dataUrl = canvas.toDataURL('image/jpeg');
 
-  let result;
+  let processFrame;
 
   try {
-    const response = await fetch('/process_frame', {
-      method: 'POST',
-      body: JSON.stringify({ image: dataUrl }),
-      headers: { 'Content-Type': 'application/json' },
-    });
-    result = await response.json();
+    processFrame = await apiPost('/process_frame', dataUrl);
 
-    if (result.success) {
+    if (processFrame.success) {
       timeoutTimeMs = 0;
       stopWebcam();
       const soundEffect = document.getElementById('soundEffect');
       soundEffect.play();
 
-      capturedImage.src = `data:image/jpeg;base64,${result.image}`;
+      capturedImage.src = `data:image/jpeg;base64,${processFrame.image}`;
       capturedImage.style.display = 'block';
+
       loading.style.display = 'block';
-
-      const gameInfoRes = await fetch('/generate_game_info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: result.image }),
-      });
-
-      const gameInfo = await gameInfoRes.json();
+      const gameInfo = await apiPost('/generate_game_info', processFrame.image);
       loading.style.display = 'none';
 
-      if (gameInfo.success) {
-        const {
-          isItAVideoGame,
-          title,
-          system,
-          genre,
-          publisher,
-          releaseYear,
-          region,
-          labelCode,
-        } = gameInfo;
-        gameJsonEl.textContent = isItAVideoGame
-          ? `Title: ${title}\nSystem: ${system}\nGenre: ${genre}\nPublisher: ${publisher}\nRelease Year: ${releaseYear}\nRegion: ${region}\nLabel Code: ${labelCode}`
-          : 'Sorry, this is not a video game!';
-        gameInfoDiv.style.display = 'block';
-        tryAgainBtn.style.display = 'block';
-      }
+      if (gameInfo.success) updateGameInfo(gameInfo);
     } else {
-      timeoutTimeMs = result.rect ? 0 : timeoutTimeMs + POLLING_INTERVAL_MS;
-      isSharp = result.is_sharp;
-      boxesQueueLen = result.boxes_queue_len;
-      boundedRect = result.rect;
+      timeoutTimeMs = processFrame.rect
+        ? 0
+        : timeoutTimeMs + POLLING_INTERVAL_MS;
+      isSharp = processFrame.is_sharp;
+      boxesQueueLen = processFrame.boxes_queue_len;
+      boundedRect = processFrame.rect;
       if (timeoutTimeMs >= TIMEOUT_LIMIT_MS) {
         stopWebcam('Detection timed out');
       }
@@ -139,7 +141,7 @@ function stopWebcam(warningMessage) {
   }
 
   if (warningMessage) {
-    warningMsg.textContent = message;
+    warningMsg.textContent = warningMessage;
     warningMsg.style.display = 'block';
     tryAgainBtn.style.display = 'block';
   }
