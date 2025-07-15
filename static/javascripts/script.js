@@ -1,24 +1,60 @@
+/**
+ * @type {HTMLVideoElement}
+ */
 const video = document.getElementById('webcam');
+/**
+ * @type {HTMLCanvasElement}
+ */
 const canvas = document.getElementById('canvas');
+/**
+ * @type {CanvasRenderingContext2D}
+ */
 const ctx = canvas.getContext('2d');
+/**
+ * @type {HTMLImageElement}
+ */
 const capturedImage = document.getElementById('capturedImage');
+/**
+ * @type {HTMLElement}
+ */
 const loading = document.getElementById('loading');
+/**
+ * @type {HTMLButtonElement}
+ */
 const tryAgainBtn = document.getElementById('tryAgainBtn');
+/**
+ * @type {HTMLElement}
+ */
 const gameInfoDiv = document.getElementById('gameInfo');
+/**
+ * @type {HTMLElement}
+ */
 const gameJsonEl = document.getElementById('gameJson');
-const timeoutMsg = document.getElementById('timeoutMsg');
+/**
+ * @type {HTMLElement}
+ */
+const warningMsg = document.getElementById('warningMsg');
 
 let stream = null;
+/**
+ * @type {number}
+ */
+const POLLING_INTERVAL_MS = 200;
 let pollingInterval = null;
 let timeoutTimeMs = 0;
 let boundedRect = null;
 let boxesQueueLen = 0;
 let isSharp = false;
 let objectedDetected = false;
-
-const POLLING_INTERVAL_MS = 200;
+/**
+ * @type {number}
+ */
 const TIMEOUT_LIMIT_MS = 20000;
 
+/**
+ * Initialize the webcam stream and start polling for frames.
+ * @returns {Promise<void>}
+ */
 async function initWebcam() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -37,6 +73,10 @@ async function initWebcam() {
   }
 }
 
+/**
+ * Draw the video frame and bounding box to the canvas.
+ * @returns {void}
+ */
 function drawVideoToCanvas() {
   if (stream && video.videoWidth > 0 && video.videoHeight > 0) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -61,11 +101,17 @@ function drawVideoToCanvas() {
   requestAnimationFrame(drawVideoToCanvas);
 }
 
-async function apiPost(route, body) {
+/**
+ * Send a POST request to the given route.
+ * @param {string} route
+ * @param {string} requestBody
+ * @returns {Promise<any>} The parsed JSON response
+ */
+async function apiPost(route, requestBody) {
   const response = await fetch(route, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
   return response.json();
 }
@@ -88,6 +134,10 @@ function updateGameInfo(gameInfo) {
   tryAgainBtn.style.display = 'block';
 }
 
+/**
+ * Capture a frame, send it to the backend, and handle the response.
+ * @returns {Promise<void>}
+ */
 async function captureAndSendFrame() {
   if (!stream || video.videoWidth === 0) return;
 
@@ -109,7 +159,9 @@ async function captureAndSendFrame() {
       capturedImage.style.display = 'block';
 
       loading.style.display = 'block';
-      const gameInfo = await apiPost('/generate_game_info', { image: processFrame.image });
+      const gameInfo = await apiPost('/generate_game_info', {
+        image: processFrame.image,
+      });
       loading.style.display = 'none';
 
       if (gameInfo.success) updateGameInfo(gameInfo);
@@ -130,6 +182,11 @@ async function captureAndSendFrame() {
   }
 }
 
+/**
+ * Stop the webcam stream and optionally display a warning message.
+ * @param {string=} warningMessage
+ * @returns {void}
+ */
 function stopWebcam(warningMessage) {
   canvas.style.display = 'none';
 
@@ -147,6 +204,10 @@ function stopWebcam(warningMessage) {
   }
 }
 
+/**
+ * Reset the app UI and state to allow another detection attempt.
+ * @returns {void}
+ */
 function resetApp() {
   capturedImage.style.display = 'none';
   gameInfoDiv.style.display = 'none';
