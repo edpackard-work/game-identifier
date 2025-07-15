@@ -61,11 +61,11 @@ function drawVideoToCanvas() {
   requestAnimationFrame(drawVideoToCanvas);
 }
 
-async function apiPost(route, imageData) {
+async function apiPost(route, body) {
   const response = await fetch(route, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: imageData }),
+    body: JSON.stringify(body),
   });
   return response.json();
 }
@@ -97,7 +97,7 @@ async function captureAndSendFrame() {
   let processFrame;
 
   try {
-    processFrame = await apiPost('/process_frame', dataUrl);
+    processFrame = await apiPost('/process_frame', { image: dataUrl });
 
     if (processFrame.success) {
       timeoutTimeMs = 0;
@@ -109,7 +109,7 @@ async function captureAndSendFrame() {
       capturedImage.style.display = 'block';
 
       loading.style.display = 'block';
-      const gameInfo = await apiPost('/generate_game_info', processFrame.image);
+      const gameInfo = await apiPost('/generate_game_info', { image: processFrame.image });
       loading.style.display = 'none';
 
       if (gameInfo.success) updateGameInfo(gameInfo);
@@ -125,7 +125,7 @@ async function captureAndSendFrame() {
       }
     }
   } catch (err) {
-    console.log(err);
+    console.error(err);
     stopWebcam('There has been an error');
   }
 }

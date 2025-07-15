@@ -42,7 +42,7 @@ def load_yolo(cfg: str, weights: str, names: str) -> Tuple[cv2.dnn.Net, Sequence
         output_layers = [layer_names[int(i) - 1] for i in unconnected.flatten()]
         logging.info("YOLO model loaded successfully")
         return net, output_layers, labels
-    except Exception as e:
+    except Exception:
         logging.exception("Error loading YOLO model")
         raise
 
@@ -97,7 +97,7 @@ def detect(frame: cv2.typing.MatLike, net: cv2.dnn.Net, output_layers: Sequence[
             logging.debug("Detection complete, found %d objects", len(idxs))
             return x, y, w, h, label, confidence
         return None
-    except Exception as e:
+    except Exception:
         logging.exception("Error during detection")
         raise
 
