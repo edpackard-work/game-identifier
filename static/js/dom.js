@@ -24,10 +24,20 @@ export function getEl(id, type) {
   return el;
 }
 
+/**
+ * Show an HTML element by setting its display to 'block'.
+ * @param {HTMLElement} el
+ * @returns {void}
+ */
 export function show(el) {
   el.style.display = 'block';
 }
 
+/**
+ * Hide an HTML element by setting its display to 'none'.
+ * @param {HTMLElement} el
+ * @returns {void}
+ */
 export function hide(el) {
   el.style.display = 'none';
 }

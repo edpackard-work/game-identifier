@@ -1,3 +1,16 @@
+/**
+ * Format game info object as a display string.
+ * @param {object} params
+ * @param {boolean} params.isItAVideoGame
+ * @param {string} params.title
+ * @param {string} params.system
+ * @param {string} params.genre
+ * @param {string} params.publisher
+ * @param {number|string} params.releaseYear
+ * @param {string} params.region
+ * @param {string} params.labelCode
+ * @returns {string}
+ */
 export function gameInfoString({
   isItAVideoGame,
   title,

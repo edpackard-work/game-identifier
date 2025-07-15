@@ -112,6 +112,11 @@ async function captureAndSendFrame() {
   }
 }
 
+/**
+ * Handle a successful detection response from the backend.
+ * @param {object} frame
+ * @returns {Promise<void>}
+ */
 async function handleSuccessfulDetection(frame) {
   timeoutTimeMs = 0;
   stopWebcam();
@@ -127,6 +132,11 @@ async function handleSuccessfulDetection(frame) {
   if (gameInfo.success) updateGameInfo(gameInfo);
 }
 
+/**
+ * Handle an unsuccessful detection response from the backend.
+ * @param {object} frame
+ * @returns {void}
+ */
 function handleUnsuccessfulDetection(frame) {
   timeoutTimeMs = frame.rect ? 0 : timeoutTimeMs + POLLING_INTERVAL_MS;
   isSharp = frame.is_sharp;
@@ -174,6 +184,11 @@ function resetApp() {
   initWebcam();
 }
 
+/**
+ * Update the game info display with the provided game info object.
+ * @param {object} gameInfo
+ * @returns {void}
+ */
 function updateGameInfo(gameInfo) {
   gameJsonEl.textContent = gameInfoString(gameInfo);
   show(gameInfoDiv);
