@@ -54,8 +54,8 @@ def generate_game_info(openai_client: OpenAI, image: str, debug: bool) -> GameIn
 
     try:
         response = openai_client.responses.parse(
-            # model="gpt-4.1",
-            model="gpt-4o-mini",
+            model="gpt-4.1",
+            # model="gpt-4o-mini",
             temperature=0,
             input=[system_message, user_message],
             text_format=GameDetails,

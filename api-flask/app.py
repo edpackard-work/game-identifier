@@ -1,8 +1,8 @@
 import os
 from collections import deque
-from dotenv import load_dotenv
 
-from flask import Flask, render_template, request, jsonify, current_app, Response
+from flask import Flask, request, jsonify, current_app, Response
+from flask_cors import CORS
 from openai import OpenAI
 
 from yolo import load_yolo, detect, postprocess, get_frame
@@ -30,7 +30,7 @@ ApiResponse = Tuple[Response, int]
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    load_dotenv()
+    CORS(app)
     if os.getenv('OPENAI_API_KEY'):
         app.config['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY')
     constants: Constants = get_constants()
@@ -52,11 +52,6 @@ def create_app() -> Flask:
 
 
 def register_routes(app: Flask):
-    @app.route('/')
-    def index() -> str:  # type: ignore
-        logging.debug("Received request for index page")
-        return render_template('index.html')
-
     @app.route('/process_frame', methods=['POST'])
     def process_frame() -> ApiResponse:  # type: ignore
         try:

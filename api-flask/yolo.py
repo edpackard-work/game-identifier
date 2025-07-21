@@ -111,7 +111,19 @@ def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Cons
     x, y, w, h, label, confidence = detection
     (H, W) = frame.shape[:2]
     x1, y1, x2, y2 = max(0, x), max(0, y), min(W, x+w), min(H, y+h)
+    
+    # Validate cropping coordinates
+    if x1 >= x2 or y1 >= y2:
+        boxes_queue.clear()
+        return {"success": False}
+    
     cropped = frame[y1:y2, x1:x2]
+    
+    # Validate cropped image is not empty
+    if cropped.size == 0:
+        boxes_queue.clear()
+        return {"success": False}
+    
     _, buffer = cv2.imencode('.png', cropped)
     base_64_image = base64.b64encode(buffer).decode()
     rect: Rect = {"x": int(x), "y": int(y), "w": int(w), "h": int(
@@ -138,7 +150,7 @@ def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Cons
     else:
         boxes_queue.clear()
 
-    responseBody: PostProcessResponseBody = {
+    final_response: PostProcessResponseBody = {
         'success': True,
         'image': base_64_image,
         'rect': rect,
@@ -148,8 +160,8 @@ def postprocess(frame: cv2.typing.MatLike, detection: Detection, constants: Cons
 
     if area >= constants['DETECTION_MIN_AREA'] and stable and is_sharp:
         boxes_queue.clear()
-        responseBody['success'] = True
+        final_response['success'] = True
     else:
-        responseBody['success'] = False
+        final_response['success'] = False
 
-    return responseBody
+    return final_response

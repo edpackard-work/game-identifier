@@ -4,4 +4,4 @@ pydantic
 numpy
 opencv-python
 Pillow
-python-dotenv
+flask-cors

@@ -1,0 +1,30 @@
+version: '3.9'
+services:
+  api:
+    build:
+      context: ./api-flask
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5001:5001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FLASK_ENV=development
+      - FLASK_APP=app.py
+      - FLASK_DEBUG=1
+    volumes:
+      - ./api-flask:/app
+    command: watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- flask run --host=0.0.0.0 --port=5001 --no-reload --debug
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev  
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app  
+      - /app/node_modules  
+    depends_on:
+      - api
+    command: npm run dev -- --host --port 3000
+
+# For production, use docker-compose.yml with Dockerfile and no volumes/command overrides.
